@@ -1,5 +1,7 @@
 # 위성 지상국 관제 콘솔 (TT&C Console)
 
+[![테스트](https://github.com/2Dokk/ttc-console/actions/workflows/ci.yml/badge.svg)](https://github.com/2Dokk/ttc-console/actions/workflows/ci.yml)
+
 ![지상국 관제 콘솔: ISS가 대전 지상국 상공을 지나는 패스 중. 업링크 손실 30% 환경에서 Go-Back-N 재전송 후 명령이 순서대로 실행되고, 교신 불가 구간의 텔레메트리가 레코더 재생(보라색)으로 채워진 모습](docs/console.png)
 
 위성은 지상국과 항상 통신할 수 있는 게 아니라, **지상국 상공을 지나가는 몇 분(가시권, pass) 동안만** 통신할 수 있습니다.
