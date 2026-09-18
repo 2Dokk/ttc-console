@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: gsc-postgres
+    environment:
+      POSTGRES_DB: gsc
+      POSTGRES_USER: gsc
+      POSTGRES_PASSWORD: gsc
+    ports:
+      - "5433:5432"
+    volumes:
+      - gsc-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gsc -d gsc"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  gsc-postgres-data:

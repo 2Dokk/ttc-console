@@ -1,0 +1,35 @@
+spring:
+  application:
+    name: ground-station-console
+  datasource:
+    url: jdbc:postgresql://localhost:5433/gsc
+    username: gsc
+    password: gsc
+  flyway:
+    locations: classpath:db/migration
+
+server:
+  port: 8080
+
+gsc:
+  orekit-data-path: orekit-data
+  satellite-id: 1        # 1 = ISS (ZARYA), 2 = KOMPSAT-3A
+  station-id: 1          # Daejeon
+  tle:
+    refresh-on-startup: true
+    source-url: https://celestrak.org/NORAD/elements/gp.php?CATNR={norad}&FORMAT=TLE
+  link:
+    uplink-loss: 0.10
+    downlink-loss: 0.05
+    one-way-delay-ms: 120
+  fop:
+    window-size: 4
+    ack-timeout-ms: 3000
+  spacecraft:
+    recorder-capacity: 2000     # samples; ~33 h at the default interval
+    recorder-interval-sec: 60   # onboard housekeeping recording rate (mission time)
+    playback-chunk: 60          # samples dumped per second of contact
+
+logging:
+  level:
+    com.gsc: INFO

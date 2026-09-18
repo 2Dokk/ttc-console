@@ -1,0 +1,75 @@
+plugins {
+	id 'java'
+	id 'org.springframework.boot' version '3.3.4'
+	id 'io.spring.dependency-management' version '1.1.6'
+}
+
+group = 'com.gsc'
+version = '0.0.1-SNAPSHOT'
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(21)
+	}
+}
+
+repositories {
+	mavenCentral()
+}
+
+ext {
+	set('testcontainersVersion', "1.21.4")
+	set('orekitVersion', "13.1.8")
+}
+
+dependencies {
+	implementation 'org.springframework.boot:spring-boot-starter-web'
+	implementation 'org.springframework.boot:spring-boot-starter-websocket'
+	implementation 'org.springframework.boot:spring-boot-starter-jdbc'
+	implementation 'org.springframework.boot:spring-boot-starter-validation'
+	implementation 'org.flywaydb:flyway-core'
+	implementation 'org.flywaydb:flyway-database-postgresql'
+	implementation "org.orekit:orekit:${orekitVersion}"
+	runtimeOnly 'org.postgresql:postgresql'
+
+	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+	testImplementation 'org.testcontainers:junit-jupiter'
+	testImplementation 'org.testcontainers:postgresql'
+	testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+dependencyManagement {
+	imports {
+		mavenBom "org.testcontainers:testcontainers-bom:${testcontainersVersion}"
+	}
+}
+
+// Orekit needs physical data (leap seconds, Earth orientation, ephemerides) at runtime.
+// It is not published to Maven, so fetch the official archive once into ./orekit-data.
+def orekitDataDir = layout.projectDirectory.dir('orekit-data')
+
+tasks.register('downloadOrekitData') {
+	description = 'Downloads the Orekit physical data archive into ./orekit-data'
+	outputs.dir(orekitDataDir)
+	onlyIf { !orekitDataDir.asFile.exists() }
+	doLast {
+		def zip = layout.buildDirectory.file('orekit-data.zip').get().asFile
+		zip.parentFile.mkdirs()
+		new URL('https://gitlab.orekit.org/orekit/orekit-data/-/archive/main/orekit-data-main.zip')
+				.withInputStream { input -> zip.withOutputStream { it << input } }
+		copy {
+			from zipTree(zip)
+			into orekitDataDir
+			eachFile { it.path = it.path.replaceFirst('^orekit-data-main/', '') }
+			includeEmptyDirs = false
+		}
+	}
+}
+
+tasks.named('bootRun') { dependsOn 'downloadOrekitData' }
+
+tasks.named('test') {
+	dependsOn 'downloadOrekitData'
+	useJUnitPlatform()
+}
