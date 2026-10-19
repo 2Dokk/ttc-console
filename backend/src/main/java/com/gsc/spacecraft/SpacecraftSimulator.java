@@ -7,6 +7,7 @@ import com.gsc.protocol.ExecutionReport;
 import com.gsc.protocol.PlaybackBatch;
 import com.gsc.protocol.RealtimeFrameEmitted;
 import com.gsc.protocol.TcFrame;
+import com.gsc.protocol.TcFrameCodec;
 import com.gsc.protocol.TmFrame;
 import com.gsc.protocol.TmSample;
 import com.gsc.tracking.LinkStatus;
@@ -15,6 +16,7 @@ import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -47,6 +49,7 @@ public class SpacecraftSimulator {
     private final OnboardRecorder recorder;
     private final Deque<TcFrame> accepted = new ArrayDeque<>();
     private final Deque<ExecutionReport> recentExecutions = new ArrayDeque<>();
+    private final AtomicLong crcRejected = new AtomicLong();
 
     private Instant lastStep;
     private Instant nextRecordAt;
@@ -83,11 +86,24 @@ public class SpacecraftSimulator {
         }
     }
 
+    /**
+     * Uplink entry point for an encoded frame. A frame whose CRC does not match was corrupted on the way
+     * up, so the receiver discards it without acknowledging; the ground notices via its retransmit timer.
+     */
+    public synchronized void receiveTc(byte[] frameBytes) {
+        TcFrameCodec.decode(frameBytes).ifPresentOrElse(this::receiveTc, crcRejected::incrementAndGet);
+    }
+
     /** Uplink entry point, called by the RF link when a frame survives the channel. */
     public synchronized void receiveTc(TcFrame frame) {
         if (farm.receive(frame.seq()) == Farm.Verdict.ACCEPTED) {
             accepted.addLast(frame);
         }
+    }
+
+    /** Frames discarded because their CRC did not match. */
+    public long crcRejected() {
+        return crcRejected.get();
     }
 
     /** Aligns V(R) with the ground's V(S) at startup (both sides restart together in this simulator). */

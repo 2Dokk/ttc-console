@@ -6,6 +6,7 @@ import com.gsc.config.GscProperties;
 import com.gsc.events.OpsEventLog;
 import com.gsc.protocol.PlaybackBatch;
 import com.gsc.protocol.TmFrame;
+import com.gsc.protocol.TmFrameCodec;
 import com.gsc.protocol.TmSample;
 import java.time.Instant;
 import java.util.List;
@@ -25,7 +26,7 @@ public class TelemetryIngestService {
     static final double TEMP_LOW_C = -5.0;
     static final double TEMP_HIGH_C = 35.0;
 
-    public record Stats(long realtimeFrames, long framesMissing, long playbackSamples) {}
+    public record Stats(long realtimeFrames, long framesMissing, long crcRejected, long playbackSamples) {}
 
     private final TelemetryRepository repo;
     private final CommandService commands;
@@ -37,6 +38,7 @@ public class TelemetryIngestService {
     private long lastRealtimeSeq = -1;
     private long realtimeFrames;
     private long framesMissing;
+    private long crcRejected;
     private long playbackSamples;
     private boolean playbackInProgress;
     private String lastMode;
@@ -51,6 +53,14 @@ public class TelemetryIngestService {
         this.events = events;
         this.messaging = messaging;
         this.satelliteId = props.satelliteId();
+    }
+
+    /**
+     * 내려온 프레임 바이트를 받아 CRC를 검사한다. 손상된 프레임은 내용을 믿을 수 없으므로 버리고,
+     * 프레임 카운터가 끊긴 것으로 드러나 누락으로 집계된다.
+     */
+    public synchronized void onRealtimeFrame(byte[] frameBytes) {
+        TmFrameCodec.decode(frameBytes).ifPresentOrElse(this::onRealtimeFrame, () -> crcRejected++);
     }
 
     public synchronized void onRealtimeFrame(TmFrame frame) {
@@ -93,7 +103,7 @@ public class TelemetryIngestService {
     }
 
     public synchronized Stats stats() {
-        return new Stats(realtimeFrames, framesMissing, playbackSamples);
+        return new Stats(realtimeFrames, framesMissing, crcRejected, playbackSamples);
     }
 
     private void checkLimits(TelemetryPoint p) {

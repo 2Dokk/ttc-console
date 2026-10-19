@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { api } from '../api'
-import type { Command, CommandType, NewCommand } from '../api'
+import type { Command, CommandType, LinkView, NewCommand } from '../api'
 import { describeArgs, utcTime } from '../format'
 import { COMMAND_LABEL, MODE_LABEL, STATUS_HELP, STATUS_LABEL } from '../labels'
 
@@ -9,12 +9,13 @@ interface Props {
   commands: Command[]
   visible: boolean
   windowSize: number
+  fop: LinkView['fop'] | null
 }
 
 const TYPES: CommandType[] = ['SET_MODE', 'PAYLOAD_POWER', 'HEATER', 'PING']
 const MODES = ['MISSION', 'NOMINAL', 'SAFE'] as const
 
-export function CommandPanel({ commands, visible, windowSize }: Props) {
+export function CommandPanel({ commands, visible, windowSize, fop }: Props) {
   const [type, setType] = useState<CommandType>('SET_MODE')
   const [mode, setMode] = useState<(typeof MODES)[number]>('MISSION')
   const [on, setOn] = useState(true)
@@ -58,6 +59,18 @@ export function CommandPanel({ commands, visible, windowSize }: Props) {
           대기 {pending} · 응답 대기 {inFlight}/{windowSize}
         </span>
       </header>
+
+      {fop?.suspended && (
+        <div className="fop-alert">
+          <div>
+            <strong>명령 송신 중지됨</strong>
+            <span>
+              같은 명령을 {fop.transmissionLimit}회 보냈지만 응답이 없습니다. 링크 상태를 확인한 뒤 재개하세요.
+            </span>
+          </div>
+          <button onClick={() => void api.resumeUplink()}>송신 재개</button>
+        </div>
+      )}
 
       <form className="cmd-form" onSubmit={submit}>
         <label>

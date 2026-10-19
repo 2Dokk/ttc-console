@@ -816,6 +816,35 @@ input[type='number'] {
   }
 }
 
+.fop-alert {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: space-between;
+  border: 1px solid var(--bad);
+  background: rgba(255, 93, 93, 0.08);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+
+.fop-alert strong {
+  display: block;
+  color: var(--bad);
+  font-size: 14px;
+}
+
+.fop-alert span {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.fop-alert button {
+  flex: none;
+  border-color: var(--bad);
+  color: var(--bad);
+}
+
 .form-error {
   color: var(--bad);
   font-size: 12px;
@@ -826,7 +855,7 @@ input[type='number'] {
 
 .sliders {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 12px;
 }
 

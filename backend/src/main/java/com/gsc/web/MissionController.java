@@ -2,6 +2,7 @@ package com.gsc.web;
 
 import com.gsc.catalog.GroundStation;
 import com.gsc.clock.SimulationClock;
+import com.gsc.command.CommandDispatcher;
 import com.gsc.config.GscProperties;
 import com.gsc.events.OpsEventLog;
 import com.gsc.events.OpsEventLog.OpsEvent;
@@ -38,24 +39,29 @@ public class MissionController {
 
     public record SpeedRequest(double speed) {}
 
-    public record LinkStatusView(SpaceLink.Stats channel, TelemetryIngestService.Stats reception) {}
+    public record LinkStatusView(SpaceLink.Stats channel, TelemetryIngestService.Stats reception, FopView fop) {}
+
+    /** 명령 송신 절차(FOP)의 현재 상태와 설정. */
+    public record FopView(boolean suspended, int windowSize, long ackTimeoutMs, int transmissionLimit) {}
 
     private final OrbitService orbit;
     private final TrackingService tracking;
     private final SimulationClock clock;
     private final SpaceLink spaceLink;
     private final TelemetryIngestService telemetry;
+    private final CommandDispatcher dispatcher;
     private final OpsEventLog events;
     private final GscProperties props;
 
     public MissionController(OrbitService orbit, TrackingService tracking, SimulationClock clock,
-                             SpaceLink spaceLink, TelemetryIngestService telemetry, OpsEventLog events,
-                             GscProperties props) {
+                             SpaceLink spaceLink, TelemetryIngestService telemetry,
+                             CommandDispatcher dispatcher, OpsEventLog events, GscProperties props) {
         this.orbit = orbit;
         this.tracking = tracking;
         this.clock = clock;
         this.spaceLink = spaceLink;
         this.telemetry = telemetry;
+        this.dispatcher = dispatcher;
         this.events = events;
         this.props = props;
     }
@@ -121,14 +127,23 @@ public class MissionController {
 
     @GetMapping("/link")
     public LinkStatusView link() {
-        return new LinkStatusView(spaceLink.stats(), telemetry.stats());
+        return new LinkStatusView(spaceLink.stats(), telemetry.stats(),
+                new FopView(dispatcher.isSuspended(), props.fop().windowSize(), props.fop().ackTimeoutMs(),
+                        props.fop().transmissionLimit()));
+    }
+
+    /** 재전송 한도 초과로 멈춘 명령 송신을 운용자가 다시 시작한다. */
+    @PostMapping("/fop/resume")
+    public LinkStatusView resumeUplink() {
+        dispatcher.resume();
+        return link();
     }
 
     @PutMapping("/link")
     public LinkStatusView configureLink(@RequestBody SpaceLink.Config config) {
         spaceLink.configure(config);
-        events.info("LINK", String.format("채널 손실률 설정: 업링크 %.0f%%, 다운링크 %.0f%%",
-                config.uplinkLoss() * 100, config.downlinkLoss() * 100));
+        events.info("LINK", String.format("채널 설정: 업링크 손실 %.0f%%, 다운링크 손실 %.0f%%, 비트 오류 %.0f%%",
+                config.uplinkLoss() * 100, config.downlinkLoss() * 100, config.bitErrorRate() * 100));
         return link();
     }
 

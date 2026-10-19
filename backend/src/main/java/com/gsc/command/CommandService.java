@@ -9,6 +9,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
@@ -23,14 +24,17 @@ public class CommandService {
     private final SimulationClock clock;
     private final OpsEventLog events;
     private final SimpMessagingTemplate messaging;
+    private final ApplicationEventPublisher publisher;
     private final long defaultSatelliteId;
 
     public CommandService(CommandRepository repo, SimulationClock clock, OpsEventLog events,
-                          SimpMessagingTemplate messaging, GscProperties props) {
+                          SimpMessagingTemplate messaging, ApplicationEventPublisher publisher,
+                          GscProperties props) {
         this.repo = repo;
         this.clock = clock;
         this.events = events;
         this.messaging = messaging;
+        this.publisher = publisher;
         this.defaultSatelliteId = props.satelliteId();
     }
 
@@ -64,6 +68,10 @@ public class CommandService {
     }
 
     public void onClcw(Clcw clcw) {
+        if (clcw.retransmit()) {
+            // 위성이 "기대하던 번호가 아직 안 왔다"고 알려 준 것이므로 타이머를 기다릴 이유가 없다.
+            publisher.publishEvent(new RetransmitRequested(clcw.vr()));
+        }
         List<Command> acked = repo.ackBelow(defaultSatelliteId, clcw.vr(), clock.now());
         if (acked.isEmpty()) {
             return;

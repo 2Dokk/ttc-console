@@ -122,6 +122,7 @@ export default function App() {
               commands={commands}
               visible={snapshot?.visible ?? false}
               windowSize={config.fopWindowSize}
+              fop={link?.fop ?? null}
             />
             <ChannelPanel link={link} />
           </div>

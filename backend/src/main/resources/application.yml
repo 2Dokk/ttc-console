@@ -19,12 +19,21 @@ gsc:
     refresh-on-startup: true
     source-url: https://celestrak.org/NORAD/elements/gp.php?CATNR={norad}&FORMAT=TLE
   link:
-    uplink-loss: 0.10
+    uplink-loss: 0.10          # 프레임이 통째로 사라질 확률
     downlink-loss: 0.05
+    bit-error-rate: 0.02       # 원격명령 프레임의 비트 1개가 뒤집힐 확률 (위성의 CRC가 검출)
     one-way-delay-ms: 120
+    jitter-ms: 30              # 전파 지연 흔들림 (+-)
+    seed: 20260918             # 난수 시드. 0이면 실행할 때마다 다른 패턴
+    burst:                     # 연속 손실 모델 (Gilbert-Elliott)
+      enabled: true
+      good-to-bad: 0.02        # 정상 -> 악화 전이 확률 (프레임당)
+      bad-to-good: 0.35        # 악화 -> 정상 전이 확률
+      loss-in-bad-state: 0.80  # 악화 상태에서의 손실률
   fop:
     window-size: 4
     ack-timeout-ms: 3000
+    transmission-limit: 12     # 같은 프레임을 이만큼 보냈는데도 응답이 없으면 송신 중지 + 운용자 경보
   spacecraft:
     recorder-capacity: 2000     # samples; ~33 h at the default interval
     recorder-interval-sec: 60   # onboard housekeeping recording rate (mission time)

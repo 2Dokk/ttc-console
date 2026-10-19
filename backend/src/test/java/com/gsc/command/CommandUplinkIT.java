@@ -9,6 +9,7 @@ import com.gsc.link.Uplink;
 import com.gsc.protocol.Clcw;
 import com.gsc.protocol.ExecutionReport;
 import com.gsc.protocol.TcFrame;
+import com.gsc.protocol.TcFrameCodec;
 import com.gsc.spacecraft.Farm;
 import com.gsc.tracking.LinkStatus;
 import java.time.Duration;
@@ -17,6 +18,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.stream.LongStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,7 +36,8 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  * Drives the FOP dispatcher by hand against a real PostgreSQL, with the RF link replaced by a
  * recorder and visibility switched by the test.
  */
-@SpringBootTest(properties = {"gsc.scheduling.enabled=false", "gsc.tle.refresh-on-startup=false"})
+@SpringBootTest(properties = {"gsc.scheduling.enabled=false", "gsc.tle.refresh-on-startup=false",
+        "gsc.fop.transmission-limit=1000"})
 @Testcontainers
 class CommandUplinkIT {
 
@@ -263,6 +266,78 @@ class CommandUplinkIT {
 
         assertThat(missionClock.now()).isAfterOrEqualTo(ahead);
         jdbc.update("truncate telemetry_sample");
+    }
+
+    /**
+     * 장시간 고장 주입: 유실 40%, 비트 오류 10%, 교신/두절을 반복하는 환경에서 명령 30건을 여러 패스에 걸쳐
+     * 전달한다. 시드를 바꿔 가며 반복하고, 매번 세 가지 불변식을 확인한다.
+     * <ul>
+     *   <li>모든 명령이 정확히 한 번 실행된다</li>
+     *   <li>실행 순서가 등록 순서와 같다</li>
+     *   <li>마지막에는 모든 명령이 수신 확인된다</li>
+     * </ul>
+     */
+    @Test
+    void survivesLongRandomisedFaultInjection() {
+        int commandCount = 30;
+        List<Long> expectedOrder = LongStream.rangeClosed(1, commandCount).boxed().toList();
+        int worstCaseTicks = 0;
+
+        for (long seed : List.of(1L, 2L, 3L, 5L, 8L, 13L, 21L, 34L)) {
+            reset();
+            for (int i = 0; i < commandCount; i++) {
+                issue(CommandType.PING, Map.of());
+            }
+
+            Random channel = new Random(seed);
+            Farm farm = new Farm(1);
+            List<Long> executedOnboard = new ArrayList<>();
+            int ticks = 0;
+            while (ticks < 2000 && executedOnboard.size() < commandCount) {
+                // 패스 모의: 120초 교신 후 60초 두절
+                link.visible = ticks % 180 < 120;
+                dispatcher.tick();
+
+                for (TcFrame frame : uplink.drain()) {
+                    byte[] onAir = TcFrameCodec.encode(frame);
+                    if (channel.nextDouble() < 0.4) {
+                        continue; // 프레임 유실
+                    }
+                    if (channel.nextDouble() < 0.1) {
+                        int bit = channel.nextInt(onAir.length * 8);
+                        onAir = onAir.clone();
+                        onAir[bit / 8] ^= (byte) (1 << (bit % 8)); // 비트 오류 -> CRC가 검출해야 함
+                    }
+                    TcFrameCodec.decode(onAir).ifPresent(decoded -> {
+                        if (farm.receive(decoded.seq()) == Farm.Verdict.ACCEPTED) {
+                            executedOnboard.add(decoded.seq());
+                        }
+                    });
+                }
+                if (link.visible && channel.nextDouble() >= 0.3) {
+                    commands.onClcw(farm.clcw()); // 수신 확인(일부는 유실)
+                }
+                clock.advance(Duration.ofSeconds(1));
+                ticks++;
+            }
+
+            // 링크가 정상으로 돌아온 뒤, 마지막 수신 확인이 내려올 시간을 준다.
+            link.visible = true;
+            for (int settle = 0; settle < 20; settle++) {
+                dispatcher.tick();
+                uplink.drain().forEach(frame -> farm.receive(frame.seq()));
+                commands.onClcw(farm.clcw());
+                clock.advance(Duration.ofSeconds(1));
+            }
+
+            assertThat(executedOnboard).as("시드 %d: 순서대로 정확히 한 번씩 실행", seed)
+                    .containsExactlyElementsOf(expectedOrder);
+            assertThat(repo.findRecent(commandCount)).as("시드 %d: 모두 수신 확인", seed)
+                    .extracting(Command::status).containsOnly(CommandStatus.ACKED);
+            worstCaseTicks = Math.max(worstCaseTicks, ticks);
+        }
+
+        assertThat(worstCaseTicks).as("명령 30건 전달에 걸린 최악의 시간(초)").isLessThan(900);
     }
 
     private Command issue(CommandType type, Map<String, Object> args) {

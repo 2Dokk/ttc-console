@@ -106,13 +106,25 @@ export interface LinkView {
   channel: {
     uplinkLoss: number
     downlinkLoss: number
+    bitErrorRate: number
     oneWayDelayMs: number
+    jitterMs: number
+    burstEnabled: boolean
     tcFrames: number
     tcLost: number
+    tcCorrupted: number
+    tcCrcRejected: number
     tmFrames: number
     tmLost: number
+    tmCorrupted: number
   }
-  reception: { realtimeFrames: number; framesMissing: number; playbackSamples: number }
+  reception: {
+    realtimeFrames: number
+    framesMissing: number
+    crcRejected: number
+    playbackSamples: number
+  }
+  fop: { suspended: boolean; windowSize: number; ackTimeoutMs: number; transmissionLimit: number }
 }
 
 export interface SkyTrack {
@@ -159,8 +171,12 @@ export const api = {
   cancelCommand: (id: number) => request<Command>(`/api/commands/${id}/cancel`, post()),
   events: () => request<OpsEvent[]>('/api/events?limit=200'),
   link: () => request<LinkView>('/api/link'),
-  setLinkLoss: (uplinkLoss: number, downlinkLoss: number) =>
-    request<LinkView>('/api/link', { method: 'PUT', body: JSON.stringify({ uplinkLoss, downlinkLoss }) }),
+  setLinkQuality: (uplinkLoss: number, downlinkLoss: number, bitErrorRate: number) =>
+    request<LinkView>('/api/link', {
+      method: 'PUT',
+      body: JSON.stringify({ uplinkLoss, downlinkLoss, bitErrorRate }),
+    }),
+  resumeUplink: () => request<LinkView>('/api/fop/resume', post()),
   setSpeed: (speed: number) => request<TrackingSnapshot>('/api/clock/speed', post({ speed })),
   skipToNextPass: () => request<TrackingSnapshot>('/api/clock/skip-to-next-pass', post()),
 }
